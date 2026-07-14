@@ -25,7 +25,6 @@ def obtener_fuente(nombre_archivo, tamano):
     return ImageFont.load_default()
 
 def aplicar_opacidad(img, factor_opacidad):
-    """Convierte la imagen y le aplica una transparencia global"""
     if img.mode != 'RGBA':
         img = img.convert('RGBA')
     r, g, b, a = img.split()
@@ -42,12 +41,10 @@ if not fuentes_disponibles:
 
 opcion_fuente = st.sidebar.selectbox("1. Selecciona la Tipografía:", fuentes_disponibles)
 
-# NUEVO: Selector de color de fondo (Azul Royal por defecto)
 hex_fondo = st.sidebar.color_picker("2. Color de Fondo:", "#1535C5") 
 color_fondo_rgb = tuple(int(hex_fondo.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
 
-# NUEVO: Selector de color de texto (Blanco por defecto)
-hex_color_texto = st.sidebar.color_picker("3. Color del Título:", "#FFFFFF") 
+hex_color_texto = st.sidebar.color_picker("3. Color del Título:", "#FFD1CB")
 color_texto_rgb = tuple(int(hex_color_texto.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
 
 tamanio_fuente_inicial = st.sidebar.slider("4. Tamaño máximo del Texto:", 100, 2000, 550, 50)
@@ -55,14 +52,15 @@ tamanio_fuente_inicial = st.sidebar.slider("4. Tamaño máximo del Texto:", 100,
 formato_texto = st.sidebar.radio(
     "5. Formato del Título:",
     ("MAYÚSCULAS", "Tipo Título"),
-    index=0 
+    index=1 
 )
 
-# NUEVO: Control de opacidad para hacer los logos "sutiles"
 opacidad_logos_pct = st.sidebar.slider("6. Opacidad de Logos Laterales (%):", 5, 100, 20, 5)
 opacidad_factor = opacidad_logos_pct / 100.0
 
 espaciado_fotos = st.sidebar.slider("7. Espaciado entre fotos:", 0, 150, 30, 10)
+
+max_fotos_pagina = st.sidebar.slider("8. Máximo de fotos por página:", 4, 20, 10, 2)
 
 st.sidebar.write("---")
 
@@ -88,7 +86,6 @@ st.sidebar.write("---")
 # --- PANEL PRINCIPAL ---
 st.title("🗂️ DUB x stfu | Collage Creator")
 st.write("Generador automatizado de presentaciones de colección en formato A3.")
-st.info("⚠️ Asegúrate de tener 'dub.png' y 'stfu.png' subidos a tu GitHub para que aparezcan los logos en las esquinas.")
 
 def limpiar_nombre_desfile(carpeta):
     nombre = carpeta.replace("___", " & ")
@@ -102,7 +99,7 @@ archivo_zip_subido = st.file_uploader("Arrastra aquí el archivo ZIP de las cole
 
 if archivo_zip_subido is not None:
     if st.button("Generar Plantillas ✨"):
-        with st.spinner('Procesando colecciones...'):
+        with st.spinner('Procesando colecciones y dividiendo páginas...'):
             
             dir_temp = tempfile.mkdtemp()
             dir_extraccion = os.path.join(dir_temp, "extraccion")
@@ -138,116 +135,136 @@ if archivo_zip_subido is not None:
                     texto_base_limpio = limpiar_nombre_desfile(nombre_carpeta)
                     
                     if formato_texto == "MAYÚSCULAS":
-                        texto_marca = texto_base_limpio.upper()
+                        texto_marca_base = texto_base_limpio.upper()
                     else:
-                        texto_marca = texto_base_limpio.title()
-                        texto_marca = texto_marca.replace("Mcc", "McC")
-                        texto_marca = re.sub(r"\'([A-Z])\b", lambda m: "'" + m.group(1).lower(), texto_marca)
+                        texto_marca_base = texto_base_limpio.title()
+                        texto_marca_base = texto_marca_base.replace("Mcc", "McC")
+                        texto_marca_base = re.sub(r"\'([A-Z])\b", lambda m: "'" + m.group(1).lower(), texto_marca_base)
 
-                    archivos = [f for f in os.listdir(ruta_desfile) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.avif'))]
-                    archivos.sort()
-                    num_imagenes = len(archivos)
+                    archivos_totales = [f for f in os.listdir(ruta_desfile) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.avif'))]
+                    archivos_totales.sort()
                     
-                    # El lienzo ahora utiliza el color de fondo seleccionable
-                    lienzo = Image.new('RGB', (A3_WIDTH, A3_HEIGHT), color_fondo_rgb)
+                    chunks_fotos = [archivos_totales[i:i + max_fotos_pagina] for i in range(0, len(archivos_totales), max_fotos_pagina)]
                     
-                    # --- 1. ZONA CABECERA: LOGOS TRANSLÚCIDOS ---
-                    altura_logos = 250
-                    ancho_reserva_izq = 0
-                    ancho_reserva_der = 0
-                    
-                    try:
-                        if os.path.exists('dub.png'):
-                            logo_dub = Image.open('dub.png').convert("RGBA")
-                            proporcion = altura_logos / float(logo_dub.height)
-                            nuevo_ancho = int(float(logo_dub.width) * float(proporcion))
-                            logo_dub = logo_dub.resize((nuevo_ancho, altura_logos), Image.Resampling.LANCZOS)
-                            
-                            # Aplicamos la opacidad elegida
-                            logo_dub = aplicar_opacidad(logo_dub, opacidad_factor)
-                            lienzo.paste(logo_dub, (MARGIN_EXTERIOR, MARGIN_EXTERIOR), logo_dub)
-                            ancho_reserva_izq = nuevo_ancho
-                    except Exception:
-                        pass
-
-                    try:
-                        if os.path.exists('stfu.png'):
-                            logo_stfu = Image.open('stfu.png').convert("RGBA")
-                            proporcion = altura_logos / float(logo_stfu.height)
-                            nuevo_ancho = int(float(logo_stfu.width) * float(proporcion))
-                            logo_stfu = logo_stfu.resize((nuevo_ancho, altura_logos), Image.Resampling.LANCZOS)
-                            
-                            # Aplicamos la opacidad elegida
-                            logo_stfu = aplicar_opacidad(logo_stfu, opacidad_factor)
-                            x_stfu = A3_WIDTH - MARGIN_EXTERIOR - nuevo_ancho
-                            lienzo.paste(logo_stfu, (x_stfu, MARGIN_EXTERIOR), logo_stfu)
-                            ancho_reserva_der = nuevo_ancho
-                    except Exception:
-                        pass
-
-                    # --- 2. ZONA CABECERA: TÍTULO CENTRADO Y ESCALABLE ---
-                    draw = ImageDraw.Draw(lienzo)
-                    current_tamanio = tamanio_fuente_inicial
-                    fuente = obtener_fuente(opcion_fuente, current_tamanio)
-                    
-                    reserva_maxima = max(ancho_reserva_izq, ancho_reserva_der)
-                    max_text_width = A3_WIDTH - (MARGIN_EXTERIOR * 2) - (reserva_maxima * 2) - 300
-
-                    try:
-                        bbox = draw.textbbox((0, 0), texto_marca, font=fuente)
-                        text_w = bbox[2] - bbox[0]
+                    for index_pagina, chunk_archivos in enumerate(chunks_fotos):
+                        num_imagenes = len(chunk_archivos)
                         
-                        while text_w > max_text_width and current_tamanio > 100:
-                            current_tamanio -= 20
-                            fuente = obtener_fuente(opcion_fuente, current_tamanio)
-                            bbox = draw.textbbox((0, 0), texto_marca, font=fuente)
-                            text_w = bbox[2] - bbox[0]
-
-                        centro_x = A3_WIDTH // 2
-                        centro_y = MARGIN_EXTERIOR + (altura_logos // 2)
+                        lienzo = Image.new('RGB', (A3_WIDTH, A3_HEIGHT), color_fondo_rgb)
                         
-                        # Escribimos el título con el color seleccionado (blanco por defecto)
-                        draw.text((centro_x, centro_y), texto_marca, fill=color_texto_rgb, font=fuente, anchor="mm")
-                    except Exception:
-                        draw.text((A3_WIDTH // 2, MARGIN_EXTERIOR + 100), texto_marca, fill=color_texto_rgb, font=fuente, anchor="mm")
-
-                    # --- 3. ZONA GRID: FOTOS ---
-                    filas = 2
-                    columnas = max(1, (num_imagenes + 1) // 2)
-                    
-                    start_y_grid = MARGIN_EXTERIOR + HEADER_HEIGHT
-                    alto_disponible = A3_HEIGHT - start_y_grid - MARGIN_EXTERIOR
-                    
-                    espacio_x = (A3_WIDTH - (2 * MARGIN_EXTERIOR) - ((columnas - 1) * espaciado_fotos)) // columnas
-                    espacio_y = (alto_disponible - ((filas - 1) * espaciado_fotos)) // filas
-
-                    ancho_maximo_permitido = int(espacio_y * 0.75) 
-                    ancho_foto = min(espacio_x, ancho_maximo_permitido)
-
-                    for idx, archivo in enumerate(archivos):
-                        ruta_img = os.path.join(ruta_desfile, archivo)
+                        # ZONA CABECERA: LOGOS TRANSLÚCIDOS
+                        altura_logos = 250
+                        ancho_reserva_izq = 0
+                        ancho_reserva_der = 0
+                        
                         try:
-                            with Image.open(ruta_img) as img:
-                                img_recortada = ImageOps.fit(img, (ancho_foto, espacio_y), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
-
-                                fila_actual = idx // columnas
-                                col_actual = idx % columnas
-
-                                x_columna = MARGIN_EXTERIOR + col_actual * (espacio_x + espaciado_fotos)
-                                x = x_columna + (espacio_x - ancho_foto) // 2 
-                                y = start_y_grid + fila_actual * (espacio_y + espaciado_fotos)
-
-                                lienzo.paste(img_recortada, (x, y))
-                                del img_recortada
+                            if os.path.exists('dub.png'):
+                                logo_dub = Image.open('dub.png').convert("RGBA")
+                                proporcion = altura_logos / float(logo_dub.height)
+                                nuevo_ancho = int(float(logo_dub.width) * float(proporcion))
+                                logo_dub = logo_dub.resize((nuevo_ancho, altura_logos), Image.Resampling.LANCZOS)
+                                logo_dub = aplicar_opacidad(logo_dub, opacidad_factor)
+                                lienzo.paste(logo_dub, (MARGIN_EXTERIOR, MARGIN_EXTERIOR), logo_dub)
+                                ancho_reserva_izq = nuevo_ancho
                         except Exception:
                             pass
 
-                    nombre_archivo_salida = f"A3_{nombre_carpeta}.jpg"
-                    ruta_salida = os.path.join(dir_resultados, nombre_archivo_salida)
-                    lienzo.save(ruta_salida, quality=100, dpi=(300, 300))
-                    
-                    del lienzo
-                    gc.collect() 
+                        try:
+                            if os.path.exists('stfu.png'):
+                                logo_stfu = Image.open('stfu.png').convert("RGBA")
+                                proporcion = altura_logos / float(logo_stfu.height)
+                                nuevo_ancho = int(float(logo_stfu.width) * float(proporcion))
+                                logo_stfu = logo_stfu.resize((nuevo_ancho, altura_logos), Image.Resampling.LANCZOS)
+                                logo_stfu = aplicar_opacidad(logo_stfu, opacidad_factor)
+                                x_stfu = A3_WIDTH - MARGIN_EXTERIOR - nuevo_ancho
+                                lienzo.paste(logo_stfu, (x_stfu, MARGIN_EXTERIOR), logo_stfu)
+                                ancho_reserva_der = nuevo_ancho
+                        except Exception:
+                            pass
+
+                        # ZONA CABECERA: TÍTULO
+                        draw = ImageDraw.Draw(lienzo)
+                        current_tamanio = tamanio_fuente_inicial
+                        fuente = obtener_fuente(opcion_fuente, current_tamanio)
+                        
+                        reserva_maxima = max(ancho_reserva_izq, ancho_reserva_der)
+                        max_text_width = A3_WIDTH - (MARGIN_EXTERIOR * 2) - (reserva_maxima * 2) - 300
+
+                        texto_marca_pagina = texto_marca_base
+                        if len(chunks_fotos) > 1:
+                            texto_marca_pagina = f"{texto_marca_base} Pt. {index_pagina + 1}"
+
+                        try:
+                            bbox = draw.textbbox((0, 0), texto_marca_pagina, font=fuente)
+                            text_w = bbox[2] - bbox[0]
+                            
+                            while text_w > max_text_width and current_tamanio > 100:
+                                current_tamanio -= 20
+                                fuente = obtener_fuente(opcion_fuente, current_tamanio)
+                                bbox = draw.textbbox((0, 0), texto_marca_pagina, font=fuente)
+                                text_w = bbox[2] - bbox[0]
+
+                            centro_x = A3_WIDTH // 2
+                            centro_y = MARGIN_EXTERIOR + (altura_logos // 2)
+                            draw.text((centro_x, centro_y), texto_marca_pagina, fill=color_texto_rgb, font=fuente, anchor="mm")
+                        except Exception:
+                            draw.text((A3_WIDTH // 2, MARGIN_EXTERIOR + 100), texto_marca_pagina, fill=color_texto_rgb, font=fuente, anchor="mm")
+
+                        # ZONA GRID: FOTOS Y CENTRADO DE FILA INFERIOR
+                        filas = 2
+                        columnas = max(1, (num_imagenes + 1) // 2)
+                        
+                        start_y_grid = MARGIN_EXTERIOR + HEADER_HEIGHT
+                        alto_disponible = A3_HEIGHT - start_y_grid - MARGIN_EXTERIOR
+                        
+                        espacio_x = (A3_WIDTH - (2 * MARGIN_EXTERIOR) - ((columnas - 1) * espaciado_fotos)) // columnas
+                        espacio_y = (alto_disponible - ((filas - 1) * espaciado_fotos)) // filas
+
+                        ancho_maximo_permitido = int(espacio_y * 0.75) 
+                        ancho_foto = min(espacio_x, ancho_maximo_permitido)
+
+                        for idx, archivo in enumerate(chunk_archivos):
+                            ruta_img = os.path.join(ruta_desfile, archivo)
+                            try:
+                                with Image.open(ruta_img) as img:
+                                    img_recortada = ImageOps.fit(img, (ancho_foto, espacio_y), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
+
+                                    fila_actual = idx // columnas
+                                    col_actual = idx % columnas
+
+                                    # --- LÓGICA DE CENTRADO DINÁMICO ---
+                                    # Averiguamos cuántos elementos tiene la fila en la que estamos
+                                    if fila_actual == 0:
+                                        items_en_esta_fila = min(num_imagenes, columnas)
+                                    else:
+                                        items_en_esta_fila = num_imagenes - columnas
+                                    
+                                    # Calculamos el espacio total del grid y el que ocupa nuestra fila
+                                    ancho_total_grid = (columnas * espacio_x) + ((columnas - 1) * espaciado_fotos)
+                                    ancho_fila_actual = (items_en_esta_fila * espacio_x) + (max(0, items_en_esta_fila - 1) * espaciado_fotos)
+                                    
+                                    # Dividimos el espacio sobrante a la mitad para empujar las fotos hacia el centro
+                                    offset_x_fila = (ancho_total_grid - ancho_fila_actual) // 2
+
+                                    # Aplicamos el offset
+                                    x_columna = MARGIN_EXTERIOR + offset_x_fila + col_actual * (espacio_x + espaciado_fotos)
+                                    x = x_columna + (espacio_x - ancho_foto) // 2 
+                                    y = start_y_grid + fila_actual * (espacio_y + espaciado_fotos)
+
+                                    lienzo.paste(img_recortada, (x, y))
+                                    del img_recortada
+                            except Exception:
+                                pass
+
+                        if len(chunks_fotos) > 1:
+                            nombre_archivo_salida = f"A3_{nombre_carpeta}_Pt_{index_pagina + 1}.jpg"
+                        else:
+                            nombre_archivo_salida = f"A3_{nombre_carpeta}.jpg"
+                            
+                        ruta_salida = os.path.join(dir_resultados, nombre_archivo_salida)
+                        lienzo.save(ruta_salida, quality=100, dpi=(300, 300))
+                        
+                        del lienzo
+                        gc.collect() 
 
                 ruta_zip_final = os.path.join(dir_temp, "Colecciones_A3_Terminadas.zip")
                 with zipfile.ZipFile(ruta_zip_final, 'w') as zipf:
