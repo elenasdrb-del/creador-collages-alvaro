@@ -6,6 +6,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 import tempfile
 import gc
 import re 
+import math
 
 # Diseño de la página web
 st.set_page_config(page_title="DUB x stfu | Collage Creator", page_icon="🗂️", layout="centered")
@@ -99,7 +100,7 @@ archivo_zip_subido = st.file_uploader("Arrastra aquí el archivo ZIP de las cole
 
 if archivo_zip_subido is not None:
     if st.button("Generar Plantillas ✨"):
-        with st.spinner('Procesando colecciones y dividiendo páginas...'):
+        with st.spinner('Procesando colecciones y equilibrando páginas...'):
             
             dir_temp = tempfile.mkdtemp()
             dir_extraccion = os.path.join(dir_temp, "extraccion")
@@ -143,8 +144,14 @@ if archivo_zip_subido is not None:
 
                     archivos_totales = [f for f in os.listdir(ruta_desfile) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.avif'))]
                     archivos_totales.sort()
+                    total_fotos = len(archivos_totales)
                     
-                    chunks_fotos = [archivos_totales[i:i + max_fotos_pagina] for i in range(0, len(archivos_totales), max_fotos_pagina)]
+                    # --- NUEVO ALGORITMO DE REPARTO EQUITATIVO ---
+                    num_paginas = math.ceil(total_fotos / max_fotos_pagina)
+                    fotos_por_pagina = math.ceil(total_fotos / num_paginas) if num_paginas > 0 else max_fotos_pagina
+                    
+                    chunks_fotos = [archivos_totales[i:i + fotos_por_pagina] for i in range(0, total_fotos, fotos_por_pagina)]
+                    # ---------------------------------------------
                     
                     for index_pagina, chunk_archivos in enumerate(chunks_fotos):
                         num_imagenes = len(chunk_archivos)
@@ -209,7 +216,7 @@ if archivo_zip_subido is not None:
                         except Exception:
                             draw.text((A3_WIDTH // 2, MARGIN_EXTERIOR + 100), texto_marca_pagina, fill=color_texto_rgb, font=fuente, anchor="mm")
 
-                        # ZONA GRID: FOTOS Y CENTRADO DE FILA INFERIOR
+                        # ZONA GRID: FOTOS Y CENTRADO DE FILAS
                         filas = 2
                         columnas = max(1, (num_imagenes + 1) // 2)
                         
@@ -231,21 +238,16 @@ if archivo_zip_subido is not None:
                                     fila_actual = idx // columnas
                                     col_actual = idx % columnas
 
-                                    # --- LÓGICA DE CENTRADO DINÁMICO ---
-                                    # Averiguamos cuántos elementos tiene la fila en la que estamos
                                     if fila_actual == 0:
                                         items_en_esta_fila = min(num_imagenes, columnas)
                                     else:
                                         items_en_esta_fila = num_imagenes - columnas
                                     
-                                    # Calculamos el espacio total del grid y el que ocupa nuestra fila
                                     ancho_total_grid = (columnas * espacio_x) + ((columnas - 1) * espaciado_fotos)
                                     ancho_fila_actual = (items_en_esta_fila * espacio_x) + (max(0, items_en_esta_fila - 1) * espaciado_fotos)
                                     
-                                    # Dividimos el espacio sobrante a la mitad para empujar las fotos hacia el centro
                                     offset_x_fila = (ancho_total_grid - ancho_fila_actual) // 2
 
-                                    # Aplicamos el offset
                                     x_columna = MARGIN_EXTERIOR + offset_x_fila + col_actual * (espacio_x + espaciado_fotos)
                                     x = x_columna + (espacio_x - ancho_foto) // 2 
                                     y = start_y_grid + fila_actual * (espacio_y + espaciado_fotos)
